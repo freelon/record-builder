@@ -22,10 +22,12 @@ import javax.lang.model.element.Modifier;
 import java.util.*;
 
 import static io.soabase.recordbuilder.processor.RecordBuilderProcessor.generatedRecordBuilderAnnotation;
+import static io.soabase.recordbuilder.processor.RecordBuilderProcessor.recordBuilderGeneratedAnnotation;
 
 class CollectionBuilderUtils {
     private final boolean useImmutableCollections;
     private final boolean addSingleItemCollectionBuilders;
+    private final boolean addClassRetainedGenerated;
     private final String listShimName;
     private final String mapShimName;
     private final String setShimName;
@@ -53,13 +55,6 @@ class CollectionBuilderUtils {
     private static final TypeName setTypeName = TypeName.get(setType);
     private static final TypeName collectionTypeName = TypeName.get(collectionType);
 
-    private static final Class<?> mutableListType = ArrayList.class;
-    private static final Class<?> mutableMapType = HashMap.class;
-    private static final Class<?> mutableSetType = HashSet.class;
-    private static final TypeName mutableListTypeName = TypeName.get(mutableListType);
-    private static final TypeName mutableMapTypeName = TypeName.get(mutableMapType);
-    private static final TypeName mutableSetTypeName = TypeName.get(mutableSetType);
-
     private static final TypeVariableName tType = TypeVariableName.get("T");
     private static final TypeVariableName kType = TypeVariableName.get("K");
     private static final TypeVariableName vType = TypeVariableName.get("V");
@@ -68,9 +63,20 @@ class CollectionBuilderUtils {
     private static final ParameterizedTypeName parameterizedSetType = ParameterizedTypeName.get(ClassName.get(Set.class), tType);
     private static final ParameterizedTypeName parameterizedCollectionType = ParameterizedTypeName.get(ClassName.get(Collection.class), tType);
 
+    private static final Class<?> mutableListType = ArrayList.class;
+    private static final Class<?> mutableMapType = HashMap.class;
+    private static final Class<?> mutableSetType = HashSet.class;
+    private static final ClassName mutableListTypeName = ClassName.get(mutableListType);
+    private static final ClassName mutableMapTypeName = ClassName.get(mutableMapType);
+    private static final ClassName mutableSetTypeName = ClassName.get(mutableSetType);
+    private final TypeSpec mutableListSpec;
+    private final TypeSpec mutableSetSpec;
+    private final TypeSpec mutableMapSpec;
+
     CollectionBuilderUtils(List<RecordClassType> recordComponents, RecordBuilder.Options metaData) {
         useImmutableCollections = metaData.useImmutableCollections();
         addSingleItemCollectionBuilders = metaData.addSingleItemCollectionBuilders();
+        addClassRetainedGenerated = metaData.addClassRetainedGenerated();
 
         listShimName = disambiguateGeneratedMethodName(recordComponents, "__list", 0);
         mapShimName = disambiguateGeneratedMethodName(recordComponents, "__map", 0);
@@ -80,6 +86,10 @@ class CollectionBuilderUtils {
         listMakerMethodName = disambiguateGeneratedMethodName(recordComponents, "__ensureListMutable", 0);
         setMakerMethodName = disambiguateGeneratedMethodName(recordComponents, "__ensureSetMutable", 0);
         mapMakerMethodName = disambiguateGeneratedMethodName(recordComponents, "__ensureMapMutable", 0);
+
+        mutableListSpec = buildMutableCollectionSubType("MutableList", mutableListTypeName, parameterizedListType, tType);
+        mutableSetSpec = buildMutableCollectionSubType("MutableSet", mutableSetTypeName, parameterizedSetType, tType);
+        mutableMapSpec = buildMutableCollectionSubType("MutableMap", mutableMapTypeName, parameterizedMapType, kType, vType);
     }
 
     enum SingleItemsMetaDataMode {
@@ -224,13 +234,16 @@ class CollectionBuilderUtils {
         }
 
         if (needsListMutableMaker) {
-            builder.addMethod(buildMutableMakerMethod(listMakerMethodName, mutableListTypeName, parameterizedListType, tType));
+            builder.addMethod(buildMutableMakerMethod(listMakerMethodName, mutableListSpec.name, parameterizedListType, tType));
+            builder.addType(mutableListSpec);
         }
         if (needsSetMutableMaker) {
-            builder.addMethod(buildMutableMakerMethod(setMakerMethodName, mutableSetTypeName, parameterizedSetType, tType));
+            builder.addMethod(buildMutableMakerMethod(setMakerMethodName, mutableSetSpec.name, parameterizedSetType, tType));
+            builder.addType(mutableSetSpec);
         }
         if (needsMapMutableMaker) {
-            builder.addMethod(buildMutableMakerMethod(mapMakerMethodName, mutableMapTypeName, parameterizedMapType, kType, vType));
+            builder.addMethod(buildMutableMakerMethod(mapMakerMethodName, mutableMapSpec.name, parameterizedMapType, kType, vType));
+            builder.addType(mutableMapSpec);
         }
     }
 
@@ -277,10 +290,10 @@ class CollectionBuilderUtils {
                 .build();
     }
 
-    private MethodSpec buildMutableMakerMethod(String name, TypeName mutableCollectionType, ParameterizedTypeName parameterizedType, TypeVariableName... typeVariables) {
-        var nullCase = CodeBlock.of("if (o == null) return new $T<>()", mutableCollectionType);
-        var isMutableCase = CodeBlock.of("if (o instanceof $T) return o", mutableCollectionType);
-        var defaultCase = CodeBlock.of("return new $T<>(o)", mutableCollectionType);
+    private MethodSpec buildMutableMakerMethod(String name, String mutableCollectionType, ParameterizedTypeName parameterizedType, TypeVariableName... typeVariables) {
+        var nullCase = CodeBlock.of("if (o == null) return new $L<>()", mutableCollectionType);
+        var isMutableCase = CodeBlock.of("if (o instanceof $L) return o", mutableCollectionType);
+        var defaultCase = CodeBlock.of("return new $L<>(o)", mutableCollectionType);
         return MethodSpec.methodBuilder(name)
                 .addAnnotation(generatedRecordBuilderAnnotation)
                 .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
@@ -291,6 +304,25 @@ class CollectionBuilderUtils {
                 .addStatement(isMutableCase)
                 .addStatement(defaultCase)
                 .build();
+    }
+
+    private TypeSpec buildMutableCollectionSubType(String className, ClassName mutableCollectionType, ParameterizedTypeName parameterizedType, TypeVariableName... typeVariables) {
+        TypeName[] typeArguments = new TypeName[] {};
+        typeArguments = Arrays.stream(typeVariables).toList().toArray(typeArguments);
+
+        TypeSpec.Builder builder = TypeSpec.classBuilder(className)
+                .addAnnotation(generatedRecordBuilderAnnotation)
+                .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .superclass(ParameterizedTypeName.get(mutableCollectionType, typeArguments))
+                .addTypeVariables(Arrays.asList(typeVariables))
+                .addMethod(MethodSpec.constructorBuilder().addAnnotation(generatedRecordBuilderAnnotation).addStatement("super()").build())
+                .addMethod(MethodSpec.constructorBuilder().addAnnotation(generatedRecordBuilderAnnotation).addParameter(parameterizedType, "o").addStatement("super(o)").build());
+
+        if (addClassRetainedGenerated) {
+            builder.addAnnotation(recordBuilderGeneratedAnnotation);
+        }
+
+        return builder.build();
     }
 
     private MethodSpec buildCollectionsShimMethod() {
