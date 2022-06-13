@@ -417,7 +417,9 @@ class InternalRecordBuilderProcessor {
                 .addAnnotation(generatedRecordBuilderAnnotation);
         recordComponents.forEach(component -> {
             constructorBuilder.addParameter(component.typeName(), component.name());
-            constructorBuilder.addStatement("this.$L = $L", component.name(), component.name());
+            var assignmentBuilder = CodeBlock.builder().add("this.$L = ", component.name());
+            collectionBuilderUtils.addShimCall(assignmentBuilder, component);
+            constructorBuilder.addStatement(assignmentBuilder.build());
         });
         builder.addMethod(constructorBuilder.build());
     }

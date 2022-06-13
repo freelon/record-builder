@@ -112,4 +112,37 @@ public class TestImmutableCollections {
 
         Assertions.assertSame(oldMap, otherCopy.map());
     }
+
+    @Test
+    void testSourceListNotModified() {
+        var item = new CollectionCopying<>(new ArrayList<>(), null, null, null, 0);
+        var modifiedItem = CollectionCopyingBuilder.builder(item)
+                .addList("a")
+                .build();
+
+        Assertions.assertEquals(modifiedItem.list(), List.of("a"));
+        Assertions.assertTrue(item.list().isEmpty());
+    }
+
+    @Test
+    void testSourceSetNotModified() {
+        var item = new CollectionCopying<>(null, new HashSet<>(), null, null, 0);
+        var modifiedItem = CollectionCopyingBuilder.builder(item)
+                .addSet("a")
+                .build();
+
+        Assertions.assertEquals(modifiedItem.set(), Set.of("a"));
+        Assertions.assertTrue(item.set().isEmpty());
+    }
+
+    @Test
+    void testSourceMapNotModified() {
+        var item = new CollectionCopying<>(null, null, new HashMap<>(), null, 0);
+        var modifiedItem = CollectionCopyingBuilder.builder(item)
+                .addMap(Instant.MIN, "a")
+                .build();
+
+        Assertions.assertEquals(modifiedItem.map(), Map.of(Instant.MIN, "a"));
+        Assertions.assertTrue(item.map().isEmpty());
+    }
 }
