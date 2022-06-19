@@ -87,9 +87,9 @@ class CollectionBuilderUtils {
         setMakerMethodName = disambiguateGeneratedMethodName(recordComponents, "__ensureSetMutable", 0);
         mapMakerMethodName = disambiguateGeneratedMethodName(recordComponents, "__ensureMapMutable", 0);
 
-        mutableListSpec = buildMutableCollectionSubType("MutableList", mutableListTypeName, parameterizedListType, tType);
-        mutableSetSpec = buildMutableCollectionSubType("MutableSet", mutableSetTypeName, parameterizedSetType, tType);
-        mutableMapSpec = buildMutableCollectionSubType("MutableMap", mutableMapTypeName, parameterizedMapType, kType, vType);
+        mutableListSpec = buildMutableCollectionSubType(metaData.mutableListClassName(), mutableListTypeName, parameterizedListType, tType);
+        mutableSetSpec = buildMutableCollectionSubType(metaData.mutableSetClassName(), mutableSetTypeName, parameterizedSetType, tType);
+        mutableMapSpec = buildMutableCollectionSubType(metaData.mutableMapClassName(), mutableMapTypeName, parameterizedMapType, kType, vType);
     }
 
     enum SingleItemsMetaDataMode {
@@ -98,7 +98,8 @@ class CollectionBuilderUtils {
         EXCLUDE_WILDCARD_TYPES
     }
 
-    record SingleItemsMetaData(Class<?> singleItemCollectionClass, List<TypeName> typeArguments, TypeName wildType) {}
+    record SingleItemsMetaData(Class<?> singleItemCollectionClass, List<TypeName> typeArguments, TypeName wildType) {
+    }
 
     Optional<SingleItemsMetaData> singleItemsMetaData(RecordClassType component, SingleItemsMetaDataMode mode) {
         if (addSingleItemCollectionBuilders && (component.typeName() instanceof ParameterizedTypeName parameterizedTypeName)) {
@@ -215,7 +216,7 @@ class CollectionBuilderUtils {
         }
 
         if (needsListShim) {
-            builder.addMethod(buildShimMethod(listShimName, listTypeName, collectionType , parameterizedListType, tType));
+            builder.addMethod(buildShimMethod(listShimName, listTypeName, collectionType, parameterizedListType, tType));
         }
         if (needsSetShim) {
             builder.addMethod(buildShimMethod(setShimName, setTypeName, collectionType, parameterizedSetType, tType));
@@ -307,7 +308,7 @@ class CollectionBuilderUtils {
     }
 
     private TypeSpec buildMutableCollectionSubType(String className, ClassName mutableCollectionType, ParameterizedTypeName parameterizedType, TypeVariableName... typeVariables) {
-        TypeName[] typeArguments = new TypeName[] {};
+        TypeName[] typeArguments = new TypeName[]{};
         typeArguments = Arrays.stream(typeVariables).toList().toArray(typeArguments);
 
         TypeSpec.Builder builder = TypeSpec.classBuilder(className)
